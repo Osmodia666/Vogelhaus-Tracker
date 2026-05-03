@@ -1,0 +1,82 @@
+@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=DM+Sans:wght@300;400;500;600&display=swap');
+
+:root {
+  --bg:        #0e1117;
+  --bg2:       #161b24;
+  --bg3:       #1e2533;
+  --border:    #2a3244;
+  --border2:   #3a4560;
+  --text:      #e8eaf0;
+  --muted:     #7a8399;
+  --accent:    #4f9cf9;
+  --accent2:   #2d7dd2;
+  --green:     #3ecf8e;
+  --amber:     #f5a623;
+  --red:       #ff5f56;
+  --mono:      'Share Tech Mono', monospace;
+  --sans:      'DM Sans', sans-serif;
+  --radius:    8px;
+  --radius-lg: 12px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 15px;
+  height: 100%;
+}
+
+#__next { height: 100%; }
+
+input, select, textarea {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 14px;
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  outline: none;
+  width: 100%;
+  transition: border-color 0.15s;
+}
+input:focus, select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(79,156,249,0.12);
+}
+input::placeholder { color: var(--muted); }
+
+button {
+  font-family: var(--sans);
+  cursor: pointer;
+}
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* Leaflet overrides */
+.leaflet-container { background: #1a2030 !important; }
+.leaflet-tile { filter: brightness(0.8) saturate(0.7) hue-rotate(190deg); }
+.leaflet-popup-content-wrapper {
+  background: var(--bg2) !important;
+  color: var(--text) !important;
+  border: 1px solid var(--border2) !important;
+  border-radius: var(--radius-lg) !important;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5) !important;
+}
+.leaflet-popup-tip { background: var(--bg2) !important; }
+.leaflet-popup-content { margin: 14px 16px !important; }
+.leaflet-bar a {
+  background: var(--bg2) !important;
+  color: var(--text) !important;
+  border-color: var(--border) !important;
+}
+.leaflet-bar a:hover { background: var(--bg3) !important; }
+.leaflet-control-attribution {
+  background: rgba(14,17,23,0.7) !important;
+  color: var(--muted) !important;
+}
+.leaflet-control-attribution a { color: var(--muted) !important; }
