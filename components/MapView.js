@@ -19,19 +19,55 @@ export function getStatusKey(b) {
 
 // Georeferenzierung der Forstbetriebskarte (WG Eisern, Stand 01.01.2022).
 // Ecken wurden anhand des aufgedruckten UTM32N/ETRS89-Gitters (Ost-/Nordwert)
-// aus der Karte bestimmt und nach WGS84 (lat/lon) umgerechnet.
+// aus der Karte bestimmt und nach WGS84 (lat/lon) umgerechnet. Da das nur eine
+// Näherung ist (Kartengitter leicht rotiert, Mess-Ungenauigkeit), kann die Karte
+// im Kalibrierungsmodus per Hand nachjustiert werden (siehe applyCalibration unten).
 export const FOREST_MAP_URL = '/forstkarte.jpg'
 export const FOREST_MAP_ATTRIBUTION = 'Forstbetriebskarte WG Eisern · AVH Forst / Kartographie Kitzing, Stand 01.01.2022'
-export const FOREST_MAP_BOUNDS = [
+export const BASE_FOREST_MAP_BOUNDS = [
   [50.811285, 8.016916], // Südwest
   [50.850710, 8.064366], // Nordost
 ]
 // Etwas großzügiger gefasster Bereich, außerhalb dessen nicht mehr gescrollt werden kann.
 const PAN_BOUNDS = [
-  [50.791570, 7.993190],
-  [50.870430, 8.088090],
+  [50.771570, 7.953190],
+  [50.890430, 8.128090],
 ]
 const FOREST_MAP_CENTER = [50.830900, 8.040640]
+
+export const DEFAULT_CALIBRATION = { dLat: 0, dLng: 0, scale: 1 }
+
+// Verschiebt/skaliert die Kartenecken um die im Kalibrierungsmodus eingestellten
+// Korrekturwerte. dLat/dLng sind Grad-Offsets auf den Mittelpunkt, scale streckt/
+// staucht die Karte gleichmäßig um diesen (ggf. verschobenen) Mittelpunkt.
+export function applyCalibration(bounds, calibration) {
+  const { dLat = 0, dLng = 0, scale = 1 } = calibration || {}
+  const [[s, w], [n, e]] = bounds
+  const centerLat = (s + n) / 2 + dLat
+  const centerLng = (w + e) / 2 + dLng
+  const halfLat = ((n - s) / 2) * scale
+  const halfLng = ((e - w) / 2) * scale
+  return [
+    [centerLat - halfLat, centerLng - halfLng],
+    [centerLat + halfLat, centerLng + halfLng],
+  ]
+}
+
+// Meter in Grad-Offsets umrechnen (grobe, für diesen kleinen Bereich ausreichend genaue Näherung).
+const METERS_PER_DEG_LAT = 111320
+const METERS_PER_DEG_LNG = 111320 * Math.cos((FOREST_MAP_CENTER[0] * Math.PI) / 180)
+
+export function nudgeCalibration(calibration, dxMeters, dyMeters) {
+  return {
+    ...calibration,
+    dLng: (calibration.dLng || 0) + dxMeters / METERS_PER_DEG_LNG,
+    dLat: (calibration.dLat || 0) + dyMeters / METERS_PER_DEG_LAT,
+  }
+}
+
+export function scaleCalibration(calibration, factor) {
+  return { ...calibration, scale: Math.max(0.8, Math.min(1.2, (calibration.scale ?? 1) * factor)) }
+}
 
 function createIcon(L, statusKey, selected) {
   const color = STATUS_COLOR[statusKey]
@@ -65,11 +101,12 @@ function buildPopup(b) {
   </div>`
 }
 
-export default function MapView({ birdhouses, onMarkerClick, center, zoom, selectedId, userPosition, showForestMap, forestOpacity }) {
+export default function MapView({ birdhouses, onMarkerClick, center, zoom, selectedId, userPosition, showForestMap, forestOpacity, calibration }) {
   const mapRef = useRef(null)
   const markersRef = useRef([])
   const userMarkerRef = useRef(null)
   const forestLayerRef = useRef(null)
+  const effectiveBounds = applyCalibration(BASE_FOREST_MAP_BOUNDS, calibration || DEFAULT_CALIBRATION)
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -87,7 +124,7 @@ export default function MapView({ birdhouses, onMarkerClick, center, zoom, selec
           attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
           maxZoom: 19,
         }).addTo(map)
-        map.fitBounds(FOREST_MAP_BOUNDS)
+        map.fitBounds(effectiveBounds)
         mapRef.current = map
       }
 
@@ -95,10 +132,12 @@ export default function MapView({ birdhouses, onMarkerClick, center, zoom, selec
       if (center) map.setView(center, zoom || 15)
 
       if (!forestLayerRef.current) {
-        forestLayerRef.current = L.imageOverlay(FOREST_MAP_URL, FOREST_MAP_BOUNDS, {
+        forestLayerRef.current = L.imageOverlay(FOREST_MAP_URL, effectiveBounds, {
           opacity: forestOpacity ?? 0.7,
           attribution: FOREST_MAP_ATTRIBUTION,
         })
+      } else {
+        forestLayerRef.current.setBounds(effectiveBounds)
       }
       const forestLayer = forestLayerRef.current
       if (showForestMap === false) {
@@ -134,7 +173,7 @@ export default function MapView({ birdhouses, onMarkerClick, center, zoom, selec
           .bindPopup('Dein Standort')
       }
     })
-  }, [center, zoom, birdhouses, selectedId, userPosition, showForestMap, forestOpacity])
+  }, [center, zoom, birdhouses, selectedId, userPosition, showForestMap, forestOpacity, calibration])
 
   useEffect(() => () => {
     // Refs müssen mit zurückgesetzt werden, sonst hält z.B. forestLayerRef nach einem

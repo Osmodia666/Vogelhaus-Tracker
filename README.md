@@ -25,6 +25,10 @@ liegen.
   georeferenziertes Overlay über der OpenStreetMap-Karte eingeblendet (ein-/ausblendbar,
   Deckkraft regelbar). Die Karte ist außerdem auf diesen Bereich begrenzt — kein Verirren
   auf der Weltkarte.
+- **Kalibrierungsmodus**: Falls das Overlay nicht exakt zur echten Karte passt, lässt es
+  sich über „Karte passt nicht? Kalibrieren“ per Hand verschieben und skalieren (Button
+  unten links auf der Karte). Die Korrektur wird im Browser gespeichert; die berechneten
+  Eckkoordinaten lassen sich zum dauerhaften Übernehmen kopieren.
 
 ## Tech Stack
 

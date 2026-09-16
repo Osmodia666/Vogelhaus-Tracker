@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import dynamic from 'next/dynamic'
 import Head from 'next/head'
 import { supabase, isSupabaseConfigured } from '../lib/supabaseClient'
-import { getStatusKey } from '../components/MapView'
+import { getStatusKey, applyCalibration, nudgeCalibration, scaleCalibration, BASE_FOREST_MAP_BOUNDS, DEFAULT_CALIBRATION } from '../components/MapView'
 
 const MapView = dynamic(() => import('../components/MapView'), { ssr: false })
 const BirdhouseForm = dynamic(() => import('../components/BirdhouseForm'), { ssr: false })
@@ -29,6 +29,38 @@ export default function Home() {
   const [listOpen, setListOpen] = useState(true)
   const [showForestMap, setShowForestMap] = useState(true)
   const [forestOpacity, setForestOpacity] = useState(0.7)
+  const [calibrating, setCalibrating] = useState(false)
+  const [calibration, setCalibration] = useState(DEFAULT_CALIBRATION)
+  const [calibrationStep, setCalibrationStep] = useState(10)
+  const [copied, setCopied] = useState(false)
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('forstkarte-kalibrierung')
+      if (saved) setCalibration({ ...DEFAULT_CALIBRATION, ...JSON.parse(saved) })
+    } catch {}
+  }, [])
+
+  const updateCalibration = updater => {
+    setCalibration(prev => {
+      const next = updater(prev)
+      try { localStorage.setItem('forstkarte-kalibrierung', JSON.stringify(next)) } catch {}
+      return next
+    })
+  }
+  const nudge = (dx, dy) => updateCalibration(prev => nudgeCalibration(prev, dx, dy))
+  const rescale = factor => updateCalibration(prev => scaleCalibration(prev, factor))
+  const resetCalibration = () => updateCalibration(() => DEFAULT_CALIBRATION)
+
+  const effectiveForestBounds = useMemo(() => applyCalibration(BASE_FOREST_MAP_BOUNDS, calibration), [calibration])
+  const copyBounds = async () => {
+    const text = JSON.stringify(effectiveForestBounds)
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {}
+  }
 
   const loadBirdhouses = useCallback(async () => {
     if (!supabase) return
@@ -173,19 +205,69 @@ export default function Home() {
               userPosition={userPosition}
               showForestMap={showForestMap}
               forestOpacity={forestOpacity}
+              calibration={calibration}
             />
-            <div className="forest-toggle">
-              <label>
-                <input type="checkbox" checked={showForestMap} onChange={e => setShowForestMap(e.target.checked)} />
-                Forstbetriebskarte
-              </label>
-              {showForestMap && (
-                <input
-                  type="range" min={0.2} max={1} step={0.05} value={forestOpacity}
-                  onChange={e => setForestOpacity(Number(e.target.value))}
-                  aria-label="Deckkraft Forstbetriebskarte"
-                />
+            <div className="map-controls">
+              {calibrating && (
+                <div className="calibrate-panel">
+                  <div className="calibrate-title">Forstkarte verschieben</div>
+                  <div className="calibrate-pad">
+                    <span />
+                    <button onClick={() => nudge(0, calibrationStep)} aria-label="Nach Norden">▲</button>
+                    <span />
+                    <button onClick={() => nudge(-calibrationStep, 0)} aria-label="Nach Westen">◀</button>
+                    <button onClick={resetCalibration} className="calibrate-center" aria-label="Zurücksetzen">⟲</button>
+                    <button onClick={() => nudge(calibrationStep, 0)} aria-label="Nach Osten">▶</button>
+                    <span />
+                    <button onClick={() => nudge(0, -calibrationStep)} aria-label="Nach Süden">▼</button>
+                    <span />
+                  </div>
+                  <div className="calibrate-row">
+                    <span>Schrittweite</span>
+                    <div className="calibrate-steps">
+                      {[2, 10, 50].map(s => (
+                        <button key={s} className={calibrationStep === s ? 'active' : ''} onClick={() => setCalibrationStep(s)}>{s} m</button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="calibrate-row">
+                    <span>Größe</span>
+                    <div className="calibrate-steps">
+                      <button onClick={() => rescale(0.995)}>− kleiner</button>
+                      <button onClick={() => rescale(1 / 0.995)}>+ größer</button>
+                    </div>
+                  </div>
+                  <div className="calibrate-row">
+                    <span>Versatz</span>
+                    <span className="calibrate-mono">
+                      {Math.round((calibration.dLng || 0) * 70450)} m O · {Math.round((calibration.dLat || 0) * 111320)} m N ·{' '}
+                      {(((calibration.scale ?? 1) - 1) * 100).toFixed(1)} % Größe
+                    </span>
+                  </div>
+                  <button className="calibrate-copy" onClick={copyBounds}>{copied ? 'Kopiert!' : 'Eckkoordinaten kopieren'}</button>
+                  <div className="calibrate-hint">
+                    Verschiebe die Karte, bis Wege/Grenzen zur echten Karte passen. Die Einstellung
+                    wird auf diesem Gerät gespeichert. Für eine dauerhafte Korrektur für alle die
+                    kopierten Koordinaten schicken.
+                  </div>
+                </div>
               )}
+              <div className="forest-toggle">
+                <label>
+                  <input type="checkbox" checked={showForestMap} onChange={e => setShowForestMap(e.target.checked)} />
+                  Forstbetriebskarte
+                </label>
+                {showForestMap && (
+                  <input
+                    type="range" min={0.2} max={1} step={0.05} value={forestOpacity}
+                    onChange={e => setForestOpacity(Number(e.target.value))}
+                    aria-label="Deckkraft Forstbetriebskarte"
+                  />
+                )}
+                <button className="calibrate-link" onClick={() => setCalibrating(o => !o)}>
+                  {calibrating ? 'Kalibrierung schließen' : 'Karte passt nicht? Kalibrieren'}
+                </button>
+              </div>
             </div>
             <button className="fab" onClick={openNew} aria-label="Neues Vogelhaus hinzufügen">+</button>
           </div>
@@ -257,16 +339,50 @@ export default function Home() {
           background: var(--accent); color: #fff; border: none; font-size: 26px; line-height: 1;
           box-shadow: 0 4px 16px rgba(0,0,0,0.35); z-index: 900;
         }
-        .forest-toggle {
+        .map-controls {
           position: absolute; left: 10px; bottom: 14px; z-index: 900;
+          display: flex; flex-direction: column; align-items: flex-start; gap: 8px;
+        }
+        .forest-toggle {
           background: rgba(14,17,23,0.88); border: 1px solid var(--border); border-radius: var(--radius);
-          padding: 8px 12px; display: flex; flex-direction: column; gap: 6px; max-width: 210px;
+          padding: 8px 12px; display: flex; flex-direction: column; gap: 6px; width: 210px;
         }
         .forest-toggle label {
           display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--text); cursor: pointer; white-space: nowrap;
         }
         .forest-toggle input[type="checkbox"] { width: auto; }
         .forest-toggle input[type="range"] { width: 100%; padding: 0; }
+        .calibrate-link {
+          background: none; border: none; color: var(--accent); font-size: 11px; padding: 0; text-align: left;
+        }
+        .calibrate-panel {
+          background: rgba(14,17,23,0.95); border: 1px solid var(--border2); border-radius: var(--radius-lg);
+          padding: 14px; width: 240px; display: flex; flex-direction: column; gap: 12px;
+          box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+        }
+        .calibrate-title { font-size: 13px; font-weight: 600; color: var(--text); }
+        .calibrate-pad {
+          display: grid; grid-template-columns: 36px 36px 36px; grid-template-rows: 36px 36px 36px;
+          gap: 4px; justify-content: center;
+        }
+        .calibrate-pad button {
+          background: var(--bg3); border: 1px solid var(--border2); border-radius: var(--radius);
+          color: var(--text); font-size: 15px;
+        }
+        .calibrate-center { color: var(--accent) !important; font-size: 14px !important; }
+        .calibrate-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 11px; color: var(--muted); }
+        .calibrate-steps { display: flex; gap: 4px; }
+        .calibrate-steps button {
+          background: var(--bg2); border: 1px solid var(--border); color: var(--muted); border-radius: 6px;
+          padding: 4px 8px; font-size: 11px;
+        }
+        .calibrate-steps button.active { background: var(--bg3); border-color: var(--accent); color: var(--accent); }
+        .calibrate-mono { font-family: var(--mono); font-size: 10px; color: var(--text); text-align: right; }
+        .calibrate-copy {
+          background: var(--bg3); border: 1px solid var(--border2); color: var(--text); border-radius: var(--radius);
+          padding: 8px; font-size: 12px;
+        }
+        .calibrate-hint { font-size: 10px; color: var(--muted); line-height: 1.5; }
 
         @media (min-width: 900px) {
           .main { flex-direction: row; }
