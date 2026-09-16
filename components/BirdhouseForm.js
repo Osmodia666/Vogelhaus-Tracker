@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { supabase, PHOTOS_BUCKET } from '../lib/supabaseClient'
+import { supabase, isSupabaseConfigured, PHOTOS_BUCKET } from '../lib/supabaseClient'
 
 export default function BirdhouseForm({ initial, onClose, onSaved, onDelete }) {
   const isEdit = Boolean(initial?.id)
@@ -60,6 +60,10 @@ export default function BirdhouseForm({ initial, onClose, onSaved, onDelete }) {
 
   const handleSubmit = async e => {
     e.preventDefault()
+    if (!isSupabaseConfigured) {
+      setError('Supabase ist nicht konfiguriert. Ohne Datenbank-Anbindung kann nichts gespeichert werden (siehe README.md, Abschnitt „Setup“).')
+      return
+    }
     if (lat == null || lng == null) {
       setError('Bitte zuerst den Standort erfassen.')
       return
@@ -106,6 +110,10 @@ export default function BirdhouseForm({ initial, onClose, onSaved, onDelete }) {
   }
 
   const handleDelete = async () => {
+    if (!isSupabaseConfigured) {
+      setError('Supabase ist nicht konfiguriert. Ohne Datenbank-Anbindung kann nichts gelöscht werden.')
+      return
+    }
     if (!confirm('Dieses Vogelhaus wirklich löschen?')) return
     setDeleting(true)
     setError('')
@@ -128,6 +136,13 @@ export default function BirdhouseForm({ initial, onClose, onSaved, onDelete }) {
         </div>
 
         <form onSubmit={handleSubmit} className="sheet-body">
+          {!isSupabaseConfigured && (
+            <div className="config-banner">
+              Supabase ist nicht konfiguriert — Speichern ist erst möglich, wenn
+              <code> NEXT_PUBLIC_SUPABASE_URL</code> und <code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code>{' '}
+              gesetzt sind (siehe README.md).
+            </div>
+          )}
           <div className="field">
             <label>Standort / Bezeichnung</label>
             <input value={name} onChange={e => setName(e.target.value)} placeholder="z.B. Eiche am Waldweg" />
@@ -242,6 +257,11 @@ export default function BirdhouseForm({ initial, onClose, onSaved, onDelete }) {
           background: none; border: none; color: var(--muted); font-size: 18px; line-height: 1; padding: 4px;
         }
         .sheet-body { overflow-y: auto; padding: 16px 18px 20px; display: flex; flex-direction: column; gap: 16px; }
+        .config-banner {
+          background: rgba(255,95,86,0.1); border: 1px solid var(--red); color: var(--red);
+          border-radius: var(--radius); padding: 10px 12px; font-size: 12px; line-height: 1.5;
+        }
+        .config-banner code { font-family: var(--mono); font-size: 11px; }
         .field { display: flex; flex-direction: column; gap: 6px; }
         .field label { font-size: 12px; color: var(--muted); font-weight: 500; }
         .field textarea {
