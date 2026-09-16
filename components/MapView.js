@@ -17,6 +17,22 @@ export function getStatusKey(b) {
   return b.status === 'voll' ? 'voll' : 'ok'
 }
 
+// Georeferenzierung der Forstbetriebskarte (WG Eisern, Stand 01.01.2022).
+// Ecken wurden anhand des aufgedruckten UTM32N/ETRS89-Gitters (Ost-/Nordwert)
+// aus der Karte bestimmt und nach WGS84 (lat/lon) umgerechnet.
+export const FOREST_MAP_URL = '/forstkarte.jpg'
+export const FOREST_MAP_ATTRIBUTION = 'Forstbetriebskarte WG Eisern · AVH Forst / Kartographie Kitzing, Stand 01.01.2022'
+export const FOREST_MAP_BOUNDS = [
+  [50.811285, 8.016916], // Südwest
+  [50.850710, 8.064366], // Nordost
+]
+// Etwas großzügiger gefasster Bereich, außerhalb dessen nicht mehr gescrollt werden kann.
+const PAN_BOUNDS = [
+  [50.791570, 7.993190],
+  [50.870430, 8.088090],
+]
+const FOREST_MAP_CENTER = [50.830900, 8.040640]
+
 function createIcon(L, statusKey, selected) {
   const color = STATUS_COLOR[statusKey]
   const size = selected ? 34 : 28
@@ -49,29 +65,48 @@ function buildPopup(b) {
   </div>`
 }
 
-export default function MapView({ birdhouses, onMarkerClick, center, zoom, selectedId, userPosition }) {
+export default function MapView({ birdhouses, onMarkerClick, center, zoom, selectedId, userPosition, showForestMap, forestOpacity }) {
   const mapRef = useRef(null)
   const markersRef = useRef([])
   const userMarkerRef = useRef(null)
+  const forestLayerRef = useRef(null)
 
   useEffect(() => {
     if (typeof window === 'undefined') return
     import('leaflet').then(L => {
       if (!mapRef.current) {
         const map = L.map('map-container', {
-          center: center || [51.1657, 10.4515],
-          zoom: zoom || (center ? 15 : 6),
+          center: FOREST_MAP_CENTER,
+          zoom: 14,
           zoomControl: true,
+          maxBounds: PAN_BOUNDS,
+          maxBoundsViscosity: 1.0,
+          minZoom: 12,
         })
         L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
           attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
           maxZoom: 19,
         }).addTo(map)
+        map.fitBounds(FOREST_MAP_BOUNDS)
         mapRef.current = map
       }
 
       const map = mapRef.current
       if (center) map.setView(center, zoom || 15)
+
+      if (!forestLayerRef.current) {
+        forestLayerRef.current = L.imageOverlay(FOREST_MAP_URL, FOREST_MAP_BOUNDS, {
+          opacity: forestOpacity ?? 0.7,
+          attribution: FOREST_MAP_ATTRIBUTION,
+        })
+      }
+      const forestLayer = forestLayerRef.current
+      if (showForestMap === false) {
+        if (map.hasLayer(forestLayer)) map.removeLayer(forestLayer)
+      } else {
+        if (!map.hasLayer(forestLayer)) forestLayer.addTo(map)
+        forestLayer.setOpacity(forestOpacity ?? 0.7)
+      }
 
       markersRef.current.forEach(m => m.remove())
       markersRef.current = []
@@ -99,9 +134,26 @@ export default function MapView({ birdhouses, onMarkerClick, center, zoom, selec
           .bindPopup('Dein Standort')
       }
     })
-  }, [center, zoom, birdhouses, selectedId, userPosition])
+  }, [center, zoom, birdhouses, selectedId, userPosition, showForestMap, forestOpacity])
 
-  useEffect(() => () => { if (mapRef.current) { mapRef.current.remove(); mapRef.current = null } }, [])
+  useEffect(() => () => {
+    // Refs müssen mit zurückgesetzt werden, sonst hält z.B. forestLayerRef nach einem
+    // React-StrictMode-Doppel-Mount (dev) eine an die zerstörte Karte gebundene Leaflet-Instanz fest.
+    if (mapRef.current) { mapRef.current.remove(); mapRef.current = null }
+    forestLayerRef.current = null
+    markersRef.current = []
+    userMarkerRef.current = null
+  }, [])
+
+  // Größe neu berechnen bei jeder Änderung des Containers (Fenster-Resize, Listen-Panel auf/zu, Rotation).
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof ResizeObserver === 'undefined') return
+    const el = document.getElementById('map-container')
+    if (!el) return
+    const observer = new ResizeObserver(() => { mapRef.current?.invalidateSize() })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
 
   return <div id="map-container" style={{ width: '100%', height: '100%' }} />
 }

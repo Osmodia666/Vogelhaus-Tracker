@@ -27,6 +27,8 @@ export default function Home() {
   const [formTarget, setFormTarget] = useState(null) // null = closed, {} = new, {...} = edit
   const [userPosition, setUserPosition] = useState(null)
   const [listOpen, setListOpen] = useState(true)
+  const [showForestMap, setShowForestMap] = useState(true)
+  const [forestOpacity, setForestOpacity] = useState(0.7)
 
   const loadBirdhouses = useCallback(async () => {
     if (!supabase) return
@@ -96,7 +98,6 @@ export default function Home() {
       <Head>
         <title>Vogelhaus-Tracker</title>
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
       </Head>
 
       <div className="shell">
@@ -170,7 +171,22 @@ export default function Home() {
               zoom={mapCenter ? 16 : undefined}
               selectedId={selectedId}
               userPosition={userPosition}
+              showForestMap={showForestMap}
+              forestOpacity={forestOpacity}
             />
+            <div className="forest-toggle">
+              <label>
+                <input type="checkbox" checked={showForestMap} onChange={e => setShowForestMap(e.target.checked)} />
+                Forstbetriebskarte
+              </label>
+              {showForestMap && (
+                <input
+                  type="range" min={0.2} max={1} step={0.05} value={forestOpacity}
+                  onChange={e => setForestOpacity(Number(e.target.value))}
+                  aria-label="Deckkraft Forstbetriebskarte"
+                />
+              )}
+            </div>
             <button className="fab" onClick={openNew} aria-label="Neues Vogelhaus hinzufügen">+</button>
           </div>
         </main>
@@ -241,6 +257,16 @@ export default function Home() {
           background: var(--accent); color: #fff; border: none; font-size: 26px; line-height: 1;
           box-shadow: 0 4px 16px rgba(0,0,0,0.35); z-index: 900;
         }
+        .forest-toggle {
+          position: absolute; left: 10px; bottom: 14px; z-index: 900;
+          background: rgba(14,17,23,0.88); border: 1px solid var(--border); border-radius: var(--radius);
+          padding: 8px 12px; display: flex; flex-direction: column; gap: 6px; max-width: 210px;
+        }
+        .forest-toggle label {
+          display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--text); cursor: pointer; white-space: nowrap;
+        }
+        .forest-toggle input[type="checkbox"] { width: auto; }
+        .forest-toggle input[type="range"] { width: 100%; padding: 0; }
 
         @media (min-width: 900px) {
           .main { flex-direction: row; }
