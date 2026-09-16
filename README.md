@@ -29,6 +29,9 @@ liegen.
   sich über „Karte passt nicht? Kalibrieren“ per Hand verschieben und skalieren (Button
   unten links auf der Karte). Die Korrektur wird im Browser gespeichert; die berechneten
   Eckkoordinaten lassen sich zum dauerhaften Übernehmen kopieren.
+- **Richtungsanzeige zum Vogelhaus**: Nach Auswahl eines Vogelhauses (Liste oder Karte)
+  zeigt ein Kompasspfeil oben rechts Richtung (nach Norden ausgerichtet) und Entfernung
+  ab dem eigenen GPS-Standort, der dabei laufend aktualisiert wird — zum Hinlaufen.
 
 ## Tech Stack
 

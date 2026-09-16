@@ -3,6 +3,7 @@ import dynamic from 'next/dynamic'
 import Head from 'next/head'
 import { supabase, isSupabaseConfigured } from '../lib/supabaseClient'
 import { getStatusKey, applyCalibration, nudgeCalibration, scaleCalibration, BASE_FOREST_MAP_BOUNDS, DEFAULT_CALIBRATION } from '../components/MapView'
+import { distanceMeters, bearingDegrees, compassLabel, formatDistance } from '../lib/geo'
 
 const MapView = dynamic(() => import('../components/MapView'), { ssr: false })
 const BirdhouseForm = dynamic(() => import('../components/BirdhouseForm'), { ssr: false })
@@ -99,6 +100,18 @@ export default function Home() {
 
   useEffect(() => { locateMe() }, [locateMe])
 
+  // Solange ein Vogelhaus zum Hinlaufen ausgewählt ist, den Standort laufend aktualisieren
+  // (nicht nur einmalig), damit Richtung und Entfernung beim Gehen mitlaufen.
+  useEffect(() => {
+    if (!selectedId || !navigator.geolocation) return
+    const watchId = navigator.geolocation.watchPosition(
+      pos => setUserPosition({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      () => {},
+      { enableHighAccuracy: true, maximumAge: 5000 }
+    )
+    return () => navigator.geolocation.clearWatch(watchId)
+  }, [selectedId])
+
   const filteredBirdhouses = useMemo(() => {
     if (filter === 'alle') return birdhouses
     return birdhouses.filter(b => getStatusKey(b) === filter)
@@ -115,6 +128,19 @@ export default function Home() {
     const b = birdhouses.find(x => x.id === id)
     if (b) setMapCenter([b.lat, b.lng])
   }
+
+  const selectedBirdhouse = useMemo(
+    () => (selectedId ? birdhouses.find(b => b.id === selectedId) : null),
+    [birdhouses, selectedId]
+  )
+
+  const navInfo = useMemo(() => {
+    if (!selectedBirdhouse || !userPosition) return null
+    const { lat, lng } = userPosition
+    const bearing = bearingDegrees(lat, lng, selectedBirdhouse.lat, selectedBirdhouse.lng)
+    const distance = distanceMeters(lat, lng, selectedBirdhouse.lat, selectedBirdhouse.lng)
+    return { bearing, distance }
+  }, [selectedBirdhouse, userPosition])
 
   const openNew = () => setFormTarget({})
   const openEdit = id => {
@@ -207,6 +233,23 @@ export default function Home() {
               forestOpacity={forestOpacity}
               calibration={calibration}
             />
+
+            {selectedBirdhouse && (
+              <div className="nav-compass">
+                <button className="nav-close" onClick={() => setSelectedId(null)} aria-label="Navigation schließen">✕</button>
+                <div className="nav-name">{selectedBirdhouse.name || 'Vogelhaus'}</div>
+                {navInfo ? (
+                  <>
+                    <div className="nav-arrow" style={{ transform: `rotate(${navInfo.bearing}deg)` }}>▲</div>
+                    <div className="nav-distance">{formatDistance(navInfo.distance)}</div>
+                    <div className="nav-compasslabel">{compassLabel(navInfo.bearing)}</div>
+                  </>
+                ) : (
+                  <div className="nav-waiting">Standort wird ermittelt…</div>
+                )}
+              </div>
+            )}
+
             <div className="map-controls">
               {calibrating && (
                 <div className="calibrate-panel">
@@ -339,6 +382,26 @@ export default function Home() {
           background: var(--accent); color: #fff; border: none; font-size: 26px; line-height: 1;
           box-shadow: 0 4px 16px rgba(0,0,0,0.35); z-index: 900;
         }
+        .nav-compass {
+          position: absolute; right: 10px; top: 14px; z-index: 900;
+          background: rgba(14,17,23,0.92); border: 1px solid var(--border2); border-radius: var(--radius-lg);
+          padding: 12px 16px; display: flex; flex-direction: column; align-items: center; gap: 2px;
+          width: 108px; box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+        }
+        .nav-close {
+          position: absolute; top: 4px; right: 6px; background: none; border: none;
+          color: var(--muted); font-size: 12px; padding: 4px;
+        }
+        .nav-name {
+          font-size: 11px; font-weight: 600; color: var(--text); text-align: center;
+          overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; margin-bottom: 4px;
+        }
+        .nav-arrow {
+          font-size: 30px; color: var(--accent); line-height: 1; transition: transform 0.2s ease;
+        }
+        .nav-distance { font-family: var(--mono); font-size: 15px; font-weight: 600; color: var(--text); margin-top: 4px; }
+        .nav-compasslabel { font-family: var(--mono); font-size: 10px; color: var(--muted); letter-spacing: 1px; }
+        .nav-waiting { font-size: 11px; color: var(--muted); text-align: center; padding: 8px 0; }
         .map-controls {
           position: absolute; left: 10px; bottom: 14px; z-index: 900;
           display: flex; flex-direction: column; align-items: flex-start; gap: 8px;
